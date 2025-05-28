@@ -327,7 +327,7 @@ void getSourceValuesFromUI(int N, double dt, int width, double dyeIntensity, int
     //                    ///* 3) Cursor is didn't switch walls */
     //                    //else { y_step = std::floor(slope * (abs(x_step - screenX_prev))) + screenY_prev; }
 
-    //                /* Handle slopes of pi/4 (45°) < gradient < inf */
+    //                /* Handle slopes of pi/4 (45Â°) < gradient < inf */
     //                    if (abs(y_step - y_stepSave) > 1) {
     //                        for (int y_step_step = 0; y_step_step < abs(y_step - y_stepSave)-1; y_step_step++) {
     //                            if (signY > 0) { 
@@ -371,7 +371,7 @@ void getSourceValuesFromUI(int N, double dt, int width, double dyeIntensity, int
                     y_stepSave = y_step;
                     y_step = std::floor(slope * (abs(x_step - screenX_prev))) + screenY_prev;
 
-                    /* Handle slopes of pi/4 (45°) < gradient < inf */
+                    /* Handle slopes of pi/4 (45Â°) < gradient < inf */
                     if (abs(y_step - y_stepSave) > 1) {
                         for (int y_step_step = 0; y_step_step < abs(y_step - y_stepSave) - 1; y_step_step++) {
                             if (signY > 0) {
@@ -413,7 +413,7 @@ void getSourceValuesFromUI(int N, double dt, int width, double dyeIntensity, int
                     y_stepSave = y_step;
                     y_step = std::floor(slope * (abs(x_step - screenX_prev))) + screenY_prev;
 
-                    /* Handle slopes of pi/4 (45°) < gradient < inf */
+                    /* Handle slopes of pi/4 (45Â°) < gradient < inf */
                     if (abs(y_step - y_stepSave) > 1) {
                         for (int y_step_step = 0; y_step_step < abs(y_step - y_stepSave) - 1; y_step_step++) {
                             if (signY > 0) {
@@ -466,19 +466,19 @@ void simulate(int N, int width, double gridSize, double dt, double* dens, double
     }
 }
 /* hello future me
-   if you ever decide to come back to this cause youre feeling especially bored or need an ego boost or whatever you left off in the getSourceValuesFromUI subroutine.
+   if you ever decide to come back to this cause youre feeling especially bored or whatever you left off in the getSourceValuesFromUI subroutine.
    the commented out part in that subroutine handles left mouse inputs appropriatly. the part that isnt commented out was there to implement the ability to swipe your
    cursor across the screen in any direction and have the fluid just sort of wrap around the window (however the boundary conditions are still no-slip and NOT periodic).
-   that part is not finished yet.
+   that part is not finished yet and the code is geniuenly horrific.
    here are a few other things you might want to add since youre coming back to this now:
-    - vorticity confinement (look it up incase you dont remember but i think you will cause im pretty sure youll be nostalgic for this time of your life by then) 
+    - vorticity confinement (look it up incase you dont remember)
     - colors
     - non-square window support
     - make the 'brushSize' parameter in the sourceValuesFromUI routine actually do what its supposed to (increase the radius of where youre adding densities and velocities) 
     - obstacles: handle them and add the ability to place them wherever you please
     - give the user the ability to add constant source values wherever they please, and direction and velocity, could even come from the boundary cells
     - make this whole program run on the gpu, i.e. make it do all the calculations on the gpu
-   ok byeee (also i hope you didnt kill yourself yet that would be a bummer) */
+   ok byeee */
 int main()
 {
     GLFWwindow* window;
