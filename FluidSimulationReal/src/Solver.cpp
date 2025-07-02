@@ -3,7 +3,10 @@
 #include <GLFW/glfw3.h>
 #include <windows.h>
 #include <string>
+#include <ctime>
+#include <iomanip>
 
+#define ITERATIONS 50
 #define IX(i,j) ((i) + (N+2)*(j)) //index
 #define SWAP(x0,x) {double* tmp = x0; x0 = x; x = tmp;} //swap 2 pointers
 #define LERP(val1,val2,x) (val1 + x*(val2-val1)) //linear interpolate macro used in advect
@@ -76,30 +79,14 @@ void set_bnd(int N, int b, double* x) {
 /* Handles diffusion. In one time interval the passed quantity should gradually become the same as its 4 adjacent cells. */
 void diffuse(double* x, double* x0, double diff, int N, int b, double dt) {
     double a = dt*diff*N*N; //Controls rate of diffusion. The bigger, the quicker things diffuse. Multiplication by dt*N*N to convert units
-    for (int k = 0; k < 20; k++) {
+    for (int k = 0; k < ITERATIONS; k++) {
         for (int i = 1; i <= N; i++) {
             for (int j = 1; j <= N; j++) {
-                /* This equation makes sure of multiple things:
-                    1) The relations between x0(i,j) and x(i,j) are constant such that if x0(i,j) > x(i,j), x(i,j) < x0(i,j) and vice versa.
-                       This works for all values of a, since this equation finds a value for x(i,j) that it needs to remain accurate to its'
-                       surroundings, based on the current values of the surrounding cells and a and its' relation to x0(i,j).
-                    2) The cells' updated values influence each other and they adjust each other based on the others' needs.
-                       In other words: cell(i,j) updates (now cell(i,j)'s value is correct from its point of view) 
-                       => cell(i,j+1) updates next based on the value of cell(i,j). Now cell(i,j+1) updated its value so its right from its point of view.
-                       now next time we get to cell(i,j), cell(i,j) will see the update in value in cell(i,j+1), that it, itself caused
-                       among other cells and update itself so its value fits from its point of view again. Now cell(i,j+1) needs to update its value again
-                       so it fits from its point of view again. It does this until at some point the values start to converge, i.e. cell(i,j)
-                       is more and more satisfied with cell(i,j+1)'s value and doesnt need to change itself much, and vice versa.
-                    3) That the process converges. If you were to determine the matrix for all the N*N unknowns in this system. One unknown for each cell's value.
-                       Then what you would see is that in every calculation for every cell the coefficient of x[IX(i,j)], that we are solving for here,
-                       is (1+4*a), while the 4 adjacent cells' coefficients are a. The remaining unknowns' coefficients are 0.
-                       Thus the matrix is diagonally dominant, since (1+4*a) > a+a+a+a+0+0+0+...+0. Therefore, since we're using gauss-seidel to determine
-                       the solution to this system of linear equations, this system will always converge, and we will always get the values we're looking for. */
                 x[IX(i,j)] = (x0[IX(i,j)] + a * (x[IX(i+1,j)] + x[IX(i-1,j)] + x[IX(i,j+1)] + x[IX(i,j-1)])) / (1+4*a);
             }
         }
         /* When we're diffusing densities, this line is irrelevant, however when diffusing velocities it is crucial.
-           This line makes sure that whenever we update a cell, that is next to a boundary cell,'s velocity,
+           This line makes sure that whenever we update a cell, that is next to a boundary cell's velocity,
            we immediately reflect that cell's velocity on the boundary cell, so that the boundary cell can now,
            in the next gauss-seidel iteration, steer the velocity of the cell away from the boundary, so the cell points more in the
            boundaries tangential direction. */
@@ -162,7 +149,7 @@ void project(int N, double* u, double* v, double* p, double* div) {
        the exact irrotational vector field we need to subtract from currentVelocityField to obtain a divergence free vector field
        and keep our fluid incompressible and mass conservant. This will also converge since, again, the matrix of this system is
        diagonally dominant. Definition of diagonal dominance: abs(aii) = sum_of_all(abs(aij)). */
-    for (k = 0; k < 20; k++) {
+    for (k = 0; k < ITERATIONS; k++) {
         for (i = 1; i <= N; i++) {
             for (j = 1; j <= N; j++) {
                 p[IX(i, j)] = (p[IX(i-1, j)] + p[IX(i+1, j)] + p[IX(i, j-1)] + p[IX(i, j+1)] - div[IX(i, j)]) / 4;
@@ -229,263 +216,74 @@ void drawGrid(double* densityArray, int N, double gridSize) {
     glEnd();
 }
 
-/* Handles user interface. Mouse input: Left & drag to add sources, Right & drag to move fluid (i.e. only add velocities) */
-// TO-DO: mouse movement in negative part of coordinate system, no reflection but same as with positive direcion 
-void getSourceValuesFromUI(int N, double dt, int width, double dyeIntensity, int brushSize, double* dens_prev, double* u_prev, double* v_prev, double x_prev, double y_prev, double x, double y, GLFWwindow* window) {
-    double h = 1.0 / (double)N;
-    bool leftMousePressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
-    bool rightMousePressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT);
-    int screenX_prev = (int)(x_prev * ((double)N/(double)width));
-    int screenY_prev = (int)((width - y_prev) * ((double)N / (double)width));
-    int screenX = (int)(x * ((double)N/(double)width));
-    int screenY = (int)((width - y) * ((double)N / (double)width));
-    int signX = (0 < (screenX - screenX_prev)) - (0 > (screenX - screenX_prev));
-    int signY = (0 < (screenY - screenY_prev)) - (0 > (screenY - screenY_prev));
-    int stepsInX;
-    stepsInX = (signX > 0 && screenX - screenX_prev < 0) ? abs(screenX - screenX_prev) + N + 1 : screenX - screenX_prev + 1;
-   // stepsInX = (signX < 0 && screenX - screenX_prev > 0) ? screenX - screenX_prev + 1 : screenX - screenX_prev + 1;
-    int x_step = screenX_prev; //geometry dash reference?!?!
-    int y_step = screenY_prev;
-    int x_stepSave = x_step;
-    int y_stepSave = y_step;
-    //double slope = ((double)(abs(screenX - screenX_prev)) != 0) ? ((double)(screenY - screenY_prev) / (double)(abs(screenX - screenX_prev))) : 3;
-    double slope = ((double)(screenY - screenY_prev) / (double)(abs(screenX - screenX_prev)));
-
-    /* Make fluid loop from one end of a boundary too another. This does not affect the free-slip boundary condition of our actual boundary cells
-       and is more here to make moving your cursor along the screen easier and more satisfying. For example once your cursor hits the left most
-       boundary we'll move the user's cursor to x=200*/
-    //screenX = (screenX > N) ? (screenX % N) : screenX;
-    //screenX = (screenX < 1) ? (screenX % N)+N : screenX;
-    //screenY = (screenY > N) ? (screenY % N) : screenY;
-    //screenY = (screenY < 1) ? (screenY % N)+N : screenY;
-
-    /* Clear the arrays so we can add new source values to them */
-    for (int i = 0; i < (N + 2) * (N + 2); i++) {
-        u_prev[i] = 0;
-        v_prev[i] = 0;
-        dens_prev[i] = 0;
-    }
-
-    ///* If left mouse button pressed, add density AND velocity (along linear path of cursor) */
-    //if (leftMousePressed) {
-    //    /* Handle vertical interpolation (i.e. slopes of inf), cursor movement is considered purely vertical at angle of roughly 0 with a given tolerance */
-    //    if (isinf(slope)) {
-    //        std::cout << "slope is inf" << std::endl;
-    //        while (y_step != screenY+signY) {
-    //            v_prev[IX(screenX, y_step)] = ((double)(screenY - screenY_prev)*h) / dt;
-    //            dens_prev[IX(screenX, y_step)] = dyeIntensity;
-    //            y_step += signY;
-    //        }
-    //    }
-    //    /* Handle non-vertical interpolation */
-    //    else {
-    //        /* Only check for x_step, to ensure that angles of 0 (i.e. horizontal cursor movements) are also drawn/recorded */
-    //        for(int i = 0; i < stepsInX; i++) {
-    //           // for (int i = 0; i < brushSize; i++) {
-    //           //     if (x_step + i <= N + 1 || y_step + i <= N+1)
-    //                u_prev[IX(x_step, y_step)] = ((double)(signX*(stepsInX-1))*h) / dt;
-    //                v_prev[IX(x_step, y_step)] = ((double)(screenY - screenY_prev)*h) / dt;
-    //                dens_prev[IX(x_step, y_step)] = dyeIntensity;
-    //                //std::cout << "u:" << std::endl;
-    //                //std::cout << u_prev[IX(x_step, y_step)] << std::endl;
-    //                //std::cout << "v:" << std::endl;
-    //                //std::cout << v_prev[IX(x_step, y_step)] << std::endl;
-    //                x_step += signX;
-    //                x_step = (x_step > N) ? (x_step % N) : x_step;
-    //                x_step = (x_step < 1) ? (x_step % N) + N : x_step;
-    //           //}
-
-    //            if (x_step != stepsInX) {
-    //                /* Always advance one step in direction set by signX and then follow with the necessary amount of steps in the y-direction. More below */
-    //                    y_stepSave = y_step;
-    //                    //x_stepSave = x_step;
-
-    //                /* Handle cases where x_step is in between screenX and screenX_prev but the two variables are on opposite horizontal sides of the screen */
-    //                    switch(signX){
-    //                    /* 1) Cursor went from right to left? */
-    //                    case(1):
-    //                        y_step = (x_step < screenX_prev && x_step < screenX)
-    //                            ? std::floor(slope * (abs(x_step + N - screenX_prev))) + screenY_prev
-    //                            : std::floor(slope * (abs(x_step - screenX_prev))) + screenY_prev;
-    //                        break;
-    //                    /* 2) Cursor went from left to right */
-    //                   /* case(-1):
-    //                        y_step = (x_step < screenX_prev && x_step < screenX)
-    //                            ? std::floor(slope * (abs(x_step - N - screenX_prev))) + screenY_prev
-    //                            : std::floor(slope * (abs(x_step - screenX_prev))) + screenY_prev;
-    //                        break;*/
-    //                    default:
-    //                        std::cout << "Invalid signX" << std::endl;
-    //                        break;
-    //                    }
-
-    //                    y_step = std::floor(slope * (abs(x_step - screenX_prev))) + screenY_prev;
-
-    //                    //if (x_step < screenX_prev && x_step < screenX) { y_step = std::floor(slope * (abs(x_step + N - screenX_prev))) + screenY_prev; }
-    //                    ///* 2) Cursor went from left to right? */
-    //                    //else if (x_step > screenX_prev && x_step > screenX) { y_step = std::floor(slope * (abs(x_step - N - screenX_prev))) + screenY_prev; }
-    //                    ///* 3) Cursor is didn't switch walls */
-    //                    //else { y_step = std::floor(slope * (abs(x_step - screenX_prev))) + screenY_prev; }
-
-    //                /* Handle slopes of pi/4 (45°) < gradient < inf */
-    //                    if (abs(y_step - y_stepSave) > 1) {
-    //                        for (int y_step_step = 0; y_step_step < abs(y_step - y_stepSave)-1; y_step_step++) {
-    //                            if (signY > 0) { 
-    //                                u_prev[IX(x_step, y_stepSave + y_step_step)] = ((double)(screenX - screenX_prev) * h) / dt;
-    //                                v_prev[IX(x_step, y_stepSave + y_step_step)] = ((double)(screenY - screenY_prev) * h) / dt;
-    //                                dens_prev[IX(x_step, y_stepSave + y_step_step)] = dyeIntensity; 
-    //                            }
-    //                            if (signY < 0) { 
-    //                                u_prev[IX(x_step, y_stepSave - y_step_step)] = ((double)(screenX - screenX_prev) * h) / dt;
-    //                                v_prev[IX(x_step, y_stepSave - y_step_step)] = ((double)(screenY - screenY_prev) * h) / dt;
-    //                                dens_prev[IX(x_step, y_stepSave - y_step_step)] = dyeIntensity; 
-    //                            }
-    //                        }
-    //                    }
-    //            }
-    //        }
-    //    }
-    //}
-
-    /* If right mouse button pressed, add density AND velocity (along linear path of cursor) */
-    if (leftMousePressed) {
-        /* Handle vertical interpolation (i.e. slopes of inf), cursor movement is considered purely vertical at angle of roughly 0 with a given tolerance */
-        if (isinf(slope)) {
-            while (y_step != screenY + signY) {
-                v_prev[IX(screenX, y_step)] = ((double)(screenY - screenY_prev) * h) / dt;
-                dens_prev[IX(screenX, y_step)] = dyeIntensity;
-                y_step += signY;
-            }
-        }
-        /* Handle non-vertical interpolation */
-        else {
-            /* Only check for x_step, to ensure that angles of 0 (i.e. horizontal cursor movements) are also drawn/recorded */
-            while (x_step != screenX + signX) {
-                u_prev[IX(x_step, y_step)] = ((double)(screenX - screenX_prev) * h) / dt;
-                v_prev[IX(x_step, y_step)] = ((double)(screenY - screenY_prev) * h) / dt;
-                dens_prev[IX(x_step, y_step)] = dyeIntensity;
-                x_step += signX;
-
-                if (x_step != screenX + signX) {
-                    /* Always advance one step in direction set by signX and then follow with the necessary amount of steps in the y-direction. More below */
-                    y_stepSave = y_step;
-                    y_step = std::floor(slope * (abs(x_step - screenX_prev))) + screenY_prev;
-
-                    /* Handle slopes of pi/4 (45°) < gradient < inf */
-                    if (abs(y_step - y_stepSave) > 1) {
-                        for (int y_step_step = 0; y_step_step < abs(y_step - y_stepSave) - 1; y_step_step++) {
-                            if (signY > 0) {
-                                u_prev[IX(x_step, y_stepSave + y_step_step)] = ((double)(screenX - screenX_prev) * h) / dt;
-                                v_prev[IX(x_step, y_stepSave + y_step_step)] = ((double)(screenY - screenY_prev) * h) / dt;
-                                dens_prev[IX(x_step, y_stepSave + y_step_step)] = dyeIntensity;
-                            }
-                            if (signY < 0) {
-                                u_prev[IX(x_step, y_stepSave - y_step_step)] = ((double)(screenX - screenX_prev) * h) / dt;
-                                v_prev[IX(x_step, y_stepSave - y_step_step)] = ((double)(screenY - screenY_prev) * h) / dt;
-                                dens_prev[IX(x_step, y_stepSave + y_step_step)] = dyeIntensity;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /* If right mouse button pressed, add density AND velocity (along linear path of cursor) */
-    if (rightMousePressed) {
-        /* Handle vertical interpolation (i.e. slopes of inf), cursor movement is considered purely vertical at angle of roughly 0 with a given tolerance */
-        if (isinf(slope)) {
-            while (y_step != screenY + signY) {
-                v_prev[IX(screenX, y_step)] = ((double)(screenY - screenY_prev) * h) / dt;
-                y_step += signY;
-            }
-        }
-        /* Handle non-vertical interpolation */
-        else {
-            /* Only check for x_step, to ensure that angles of 0 (i.e. horizontal cursor movements) are also drawn/recorded */
-            while (x_step != screenX + signX) {
-                u_prev[IX(x_step, y_step)] = ((double)(screenX - screenX_prev) * h) / dt;
-                v_prev[IX(x_step, y_step)] = ((double)(screenY - screenY_prev) * h) / dt;
-                x_step += signX;
-
-                if (x_step != screenX + signX) {
-                    /* Always advance one step in direction set by signX and then follow with the necessary amount of steps in the y-direction. More below */
-                    y_stepSave = y_step;
-                    y_step = std::floor(slope * (abs(x_step - screenX_prev))) + screenY_prev;
-
-                    /* Handle slopes of pi/4 (45°) < gradient < inf */
-                    if (abs(y_step - y_stepSave) > 1) {
-                        for (int y_step_step = 0; y_step_step < abs(y_step - y_stepSave) - 1; y_step_step++) {
-                            if (signY > 0) {
-                                u_prev[IX(x_step, y_stepSave + y_step_step)] = ((double)(screenX - screenX_prev) * h) / dt;
-                                v_prev[IX(x_step, y_stepSave + y_step_step)] = ((double)(screenY - screenY_prev) * h) / dt;
-                            }
-                            if (signY < 0) {
-                                u_prev[IX(x_step, y_stepSave - y_step_step)] = ((double)(screenX - screenX_prev) * h) / dt;
-                                v_prev[IX(x_step, y_stepSave - y_step_step)] = ((double)(screenY - screenY_prev) * h) / dt;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 /* The main simulation loop. Call this to execute the 2D eulerian fluid simulation. Function returns when passed GLFWwindow* object is closed. */
 void simulate(int N, int width, double gridSize, double dt, double* dens, double* dens_prev, double* u, double* u_prev, double* v, double* v_prev, double diff, double dyeIntensity, int brushSize, GLFWwindow* window) {
     /* Used for tracking user input */
     double cursorX_prev = 0, cursorY_prev = 0, cursorX = 0, cursorY = 0;
 
+    int frames = 0;
+    double avg[30] = {0};
+    int it = 0;
+    time_t start = time(0);
+    time_t prev = time(0);
     /* Loop until the user closes the window */
-    while (!glfwWindowShouldClose(window)) {
-        cursorX_prev = cursorX;
-        cursorY_prev = cursorY;
-        glfwGetCursorPos(window, &cursorX, &cursorY);
+    while (!glfwWindowShouldClose(window) && time(0) - start < 30) {
+        if (time(0) - prev >= 1) {
+            printf("time(0)-start: %f\n", difftime(time(0), start));
+            printf("time(0)-prev: %f\n", difftime(time(0), prev));
+            printf("Cells/s: %d\n", frames * (N * N));
+            avg[it++] = (frames * (N * N)) / (difftime(time(0), prev));
+            printf("Avg[%d]: %f\n", it - 1, avg[it - 1]);
+            frames = 0;
+            prev = time(0);
+        }
+        if (time(0) - start >= 30) break;
         glClear(GL_COLOR_BUFFER_BIT);
-        getSourceValuesFromUI(N, dt, width, dyeIntensity, brushSize, dens_prev, u_prev, v_prev, abs(cursorX_prev), abs(cursorY_prev), abs(cursorX), abs(cursorY), window);
 
-            int i = 4;
-            int j = 100;
-            u_prev[IX(i, j)] = 1;
-            dens_prev[IX(i, j)] = 5;
-            v_prev[IX(i, j)] = 0;
+        int i = 200;
+        int j = 255;
+        u_prev[IX(i, j)] = 0.5;
+        dens_prev[IX(i, j)] = 5;
+        v_prev[IX(i, j)] = 0;
 
-             i = 196;
-             j = 100;
-            u_prev[IX(i, j)] = -0.015;
-            dens_prev[IX(i, j)] = 2;
-            v_prev[IX(i, j)] = 0;
+        i = 300;
+        j = 255;
+        u_prev[IX(i, j)] = -0.5;
+        dens_prev[IX(i, j)] = 5;
+        v_prev[IX(i, j)] = 0;
 
         velocity_step(N, dt, diff, u, u_prev, v, v_prev);
         density_step(N, dt, diff, dens, dens_prev, u, v);
         drawGrid(dens, N, gridSize);
+
+        for (int i = 0; i < (N + 2) * (N + 2); i++) {
+            u_prev[i] = 0;
+            v_prev[i] = 0;
+            dens_prev[i] = 0;
+        }
         
         glfwSwapBuffers(window);
         glfwPollEvents();
+        frames++;
     }
+
+    time_t end = time(0);
+    double total_avg = 0;
+    for (int i = 0; i < it; i++) {
+        total_avg += avg[i];
+    }
+    printf("it: %d\n", it);
+    printf("Avg Cells/s: %f\nTotal_Avg: %f\nSeconds: %f\n", total_avg / (double)it, total_avg, difftime(end, start));
+    fflush(stdout);
 }
-/* hello future me
-   if you ever decide to come back to this cause youre feeling especially bored or whatever you left off in the getSourceValuesFromUI subroutine.
-   the commented out part in that subroutine handles left mouse inputs appropriatly. the part that isnt commented out was there to implement the ability to swipe your
-   cursor across the screen in any direction and have the fluid just sort of wrap around the window (however the boundary conditions are still no-slip and NOT periodic).
-   that part is not finished yet and the code is geniuenly horrific.
-   here are a few other things you might want to add since youre coming back to this now:
-    - vorticity confinement (look it up incase you dont remember)
-    - colors
-    - non-square window support
-    - make the 'brushSize' parameter in the sourceValuesFromUI routine actually do what its supposed to (increase the radius of where youre adding densities and velocities) 
-    - obstacles: handle them and add the ability to place them wherever you please
-    - give the user the ability to add constant source values wherever they please, and direction and velocity, could even come from the boundary cells
-    - make this whole program run on the gpu, i.e. make it do all the calculations on the gpu
-   ok byeee */
+
 int main()
 {
     GLFWwindow* window;
-    int width = 800;
-    int height = 800;
+    int width = 1440;
+    int height = 1440;
   //  double screenRatio = (double)width / (double)height;
-    const int N = 200;
+    const int N = 544;
     const double dt = 0.5;
     double gridSize = 1.0/(double)N;
     const int totalAmountOfCells = (N+2) * (N+2);
